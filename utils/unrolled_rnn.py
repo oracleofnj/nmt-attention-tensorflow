@@ -241,24 +241,30 @@ def make_placeholders(batch_size, num_steps):
         inputs = tf.placeholder(
             dtype=tf.int32,
             shape=[batch_size, num_steps],
-            name='inputs'
+            name='inputs',
         )
         targets = tf.placeholder(
             dtype=tf.int32,
             shape=[batch_size, num_steps],
-            name='inputs'
+            name='targets',
+        )
+        learning_rate = tf.placeholder(
+            dtype=tf.float16,
+            shape=[],
+            name='learning_rate',
         )
 
     return {
         'inputs': inputs,
         'targets': targets,
+        'learning_rate': learning_rate,
     }
 
 
 def make_summary_nodes(targets, logits):
     """Create the output nodes."""
-    with tf.name_scope('train'):
-        loss = tf.contrib.seq2seq.sequence_loss(
+    with tf.name_scope('summary'):
+        batch_loss = tf.contrib.seq2seq.sequence_loss(
             logits=logits,
             targets=targets,
             weights=tf.ones_like(
@@ -266,9 +272,35 @@ def make_summary_nodes(targets, logits):
                 dtype=tf.float16
             ),
             average_across_timesteps=True,
-            average_across_batch=True,
+            average_across_batch=False,
+            name='batch_loss',
+        )
+        loss = tf.reduce_sum(
+            batch_loss,
             name='loss',
         )
+        predictions = tf.cast(
+            tf.argmax(
+                logits,
+                axis=-1,
+            ),
+            tf.int32,
+            name='predictions',
+        )
+        num_correct_predictions = tf.reduce_sum(
+            tf.cast(tf.equal(predictions, targets), tf.int32),
+            name='num_correct_predictions',
+        )
+
+    return {
+        'loss': loss,
+        'num_correct_predictions': num_correct_predictions,
+    }
+
+
+def make_train_op(loss, learning_rate):
+    """Create the training op."""
+    with tf.name_scope('train'):
         trainable_variables = tf.trainable_variables()
         unclipped_gradients = tf.gradients(loss, trainable_variables)
         clipped_gradients, _ = tf.clip_by_global_norm(
@@ -281,7 +313,4 @@ def make_summary_nodes(targets, logits):
             zip(clipped_gradients, trainable_variables),
         )
 
-    return {
-        'loss': loss,
-        'train_op': train_op,
-    }
+    return train_op
