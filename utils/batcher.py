@@ -1,6 +1,6 @@
 """Utility functions."""
 import tensorflow as tf
-
+import numpy as np
 
 def ptb_batcher(raw_data, batch_size, num_steps):
     """Return a batch of data.
@@ -45,3 +45,21 @@ def ptb_batcher(raw_data, batch_size, num_steps):
         )
         y.set_shape([batch_size, num_steps])
         return x, y
+
+
+def generate_epoch(raw_data, batch_size, num_steps):
+    """Generate all the batches for a single epoch.
+
+    Does something similar to ptb_batcher without using a queue.
+    """
+    data_len = len(raw_data)
+    num_batches = data_len // batch_size
+    data = np.reshape(
+        raw_data[:batch_size * num_batches],
+        (batch_size, num_batches)
+    )
+    batches_per_epoch = (num_batches - 1) // num_steps
+    for i in range(batches_per_epoch):
+        x = data[:, (i * num_steps):((i+1) * num_steps)]
+        y = data[:, (1 + i * num_steps):(1 + (i+1) * num_steps)]
+        yield x, y
