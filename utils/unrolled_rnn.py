@@ -253,11 +253,17 @@ def make_placeholders(batch_size, num_steps):
             shape=[],
             name='learning_rate',
         )
+        max_norm = tf.placeholder(
+            dtype=tf.float16,
+            shape=[],
+            name='max_norm',
+        )
 
     return {
         'inputs': inputs,
         'targets': targets,
         'learning_rate': learning_rate,
+        'max_norm': max_norm,
     }
 
 
@@ -298,14 +304,14 @@ def make_summary_nodes(targets, logits):
     }
 
 
-def make_train_op(loss, learning_rate):
+def make_train_op(loss, learning_rate, max_norm):
     """Create the training op."""
     with tf.name_scope('train'):
         trainable_variables = tf.trainable_variables()
         unclipped_gradients = tf.gradients(loss, trainable_variables)
         clipped_gradients, _ = tf.clip_by_global_norm(
             unclipped_gradients,
-            5.,
+            max_norm,
             name='clipped_gradients'
         )
         optimizer = tf.train.GradientDescentOptimizer(1.0)
