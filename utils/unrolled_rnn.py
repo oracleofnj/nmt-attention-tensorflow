@@ -309,6 +309,10 @@ def make_train_op(loss, learning_rate, max_norm):
     with tf.name_scope('train'):
         trainable_variables = tf.trainable_variables()
         unclipped_gradients = tf.gradients(loss, trainable_variables)
+        gradient_global_norm = tf.reduce_sum(
+            unclipped_gradients * unclipped_gradients,
+            name='gradient_global_norm'
+        )
         clipped_gradients, _ = tf.clip_by_global_norm(
             unclipped_gradients,
             max_norm,
@@ -319,4 +323,8 @@ def make_train_op(loss, learning_rate, max_norm):
             zip(clipped_gradients, trainable_variables),
         )
 
-    return train_op
+    return {
+        'train_op': train_op,
+        'gradient_global_norm': gradient_global_norm,
+    }
+        
