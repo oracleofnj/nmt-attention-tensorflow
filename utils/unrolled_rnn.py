@@ -277,8 +277,8 @@ def make_summary_nodes(targets, logits):
                 targets,
                 dtype=tf.float16
             ),
-            average_across_timesteps=False,
-            average_across_batch=False,
+            average_across_timesteps=True,
+            average_across_batch=True,
             name='batch_loss',
         )
         loss = tf.reduce_sum(
