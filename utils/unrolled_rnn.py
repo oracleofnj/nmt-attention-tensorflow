@@ -318,7 +318,7 @@ def make_train_op(loss, learning_rate, max_norm):
             max_norm,
             name='clipped_gradients'
         )
-        optimizer = tf.train.RMSPropOptimizer(learning_rate, 0.999)
+        optimizer = tf.train.SGDOptimizer(learning_rate)
         train_op = optimizer.apply_gradients(
             zip(clipped_gradients, trainable_variables),
         )
