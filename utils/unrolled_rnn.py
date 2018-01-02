@@ -6,12 +6,15 @@ def make_rnn_variables(
     vocab_size,
     embedding_size,
     hidden_size,
+    initializer_scale=0.05,
 ):
     """Create the trainable variables for the RNN."""
     with tf.variable_scope(
         'RNNParams',
         reuse=False,
-        initializer=tf.random_uniform_initializer(-0.05, 0.05),
+        initializer=tf.random_uniform_initializer(
+            -initializer_scale, initializer_scale
+        ),
     ):
         embedding_matrix = tf.get_variable(
             'embedding',
@@ -120,12 +123,26 @@ def make_rnn_outputs(
     batch_size,
     num_steps,
     rnn_variables,
+    reuse_embeddings_for_softmax=True,
 ):
     """Construct the RNN graph."""
     embedding_matrix = rnn_variables['embedding_matrix']
     gru_params = rnn_variables['gru_params']
     softmax_params = rnn_variables['softmax_params']
     with tf.name_scope('RNN'):
+        if reuse_embeddings_for_softmax:
+            softmax_params = {
+                'W': tf.transpose(
+                    embedding_matrix,
+                    [1, 0],
+                    name='transposed_embeddings',
+                ),
+                'b': tf.zeros(
+                    [vocab_size],
+                    dtype=tf.float16,
+                    name='zero_bias',
+                )
+            }
         embedded_inputs = tf.nn.embedding_lookup(
             embedding_matrix,
             input_sequence,
