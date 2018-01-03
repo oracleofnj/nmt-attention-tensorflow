@@ -6,6 +6,7 @@ def make_rnn_variables(
     vocab_size,
     embedding_size,
     hidden_size,
+    reuse_embeddings_for_softmax=True,
     initializer_scale=0.05,
 ):
     """Create the trainable variables for the RNN."""
@@ -68,18 +69,32 @@ def make_rnn_variables(
                 dtype=tf.float16,
             ),
         }
-        softmax_params = {
-            'W': tf.get_variable(
-                'softmax_w',
-                [hidden_size, vocab_size],
-                dtype=tf.float16,
-            ),
-            'b': tf.get_variable(
-                'softmax_b',
-                [vocab_size],
-                dtype=tf.float16,
-            )
-        }
+        if reuse_embeddings_for_softmax:
+            softmax_params = {
+                'W': tf.get_variable(
+                    'softmax_w',
+                    [hidden_size, embedding_size],
+                    dtype=tf.float16,
+                ),
+                'b': tf.get_variable(
+                    'softmax_b',
+                    [embedding_size],
+                    dtype=tf.float16,
+                )
+            }
+        else:
+            softmax_params = {
+                'W': tf.get_variable(
+                    'softmax_w',
+                    [hidden_size, vocab_size],
+                    dtype=tf.float16,
+                ),
+                'b': tf.get_variable(
+                    'softmax_b',
+                    [vocab_size],
+                    dtype=tf.float16,
+                )
+            }
 
     return {
         'embedding_matrix': embedding_matrix,
@@ -130,19 +145,6 @@ def make_rnn_outputs(
     gru_params = rnn_variables['gru_params']
     softmax_params = rnn_variables['softmax_params']
     with tf.name_scope('RNN'):
-        if reuse_embeddings_for_softmax:
-            softmax_params = {
-                'W': tf.transpose(
-                    embedding_matrix,
-                    [1, 0],
-                    name='transposed_embeddings',
-                ),
-                'b': tf.zeros(
-                    [vocab_size],
-                    dtype=tf.float16,
-                    name='zero_bias',
-                )
-            }
         embedded_inputs = tf.nn.embedding_lookup(
             embedding_matrix,
             input_sequence,
@@ -232,12 +234,30 @@ def make_rnn_outputs(
         )
         # long_and_skinny_logits will have shape
         # (batch_size * num_steps, vocab_size)
-        long_and_skinny_logits = tf.nn.xw_plus_b(
-            long_and_skinny_states,
-            softmax_params['W'],
-            softmax_params['b'],
-            name='long_and_skinny_logits',
-        )
+        if reuse_embeddings_for_softmax:
+            long_and_skinny_antiembeddings = tf.nn.xw_plus_b(
+                long_and_skinny_states,
+                softmax_params['W'],
+                softmax_params['b'],
+                name='long_and_skinny_antiembeddings',
+            )
+            transposed_embeddings = tf.transpose(
+                embedding_matrix,
+                [1, 0],
+                'transposed_embeddings',
+            )
+            long_and_skinny_logits = tf.matmul(
+                long_and_skinny_antiembeddings,
+                transposed_embeddings,
+                name='long_and_skinny_logits',
+            )
+        else:
+            long_and_skinny_logits = tf.nn.xw_plus_b(
+                long_and_skinny_states,
+                softmax_params['W'],
+                softmax_params['b'],
+                name='long_and_skinny_logits',
+            )
         # logits will have shape
         # (batch_size, num_steps, vocab_size)
         logits = tf.reshape(
