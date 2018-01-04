@@ -23,6 +23,7 @@ import collections
 import os
 import sys
 
+import numpy as np
 import tensorflow as tf
 
 Py3 = sys.version_info[0] == 3
@@ -81,6 +82,148 @@ def ptb_raw_data(data_path=None):
   test_data = _file_to_word_ids(test_path, word_to_id)
   vocabulary = len(word_to_id)
   return train_data, valid_data, test_data, vocabulary
+
+
+def _train_val_test_split(arrays, train_size, val_size):
+    return [
+        [
+            a[:train_size],
+            a[train_size:(train_size+val_size)],
+            a[(train_size+val_size):]
+        ]
+        for a in arrays
+    ]
+
+
+def _read_lines(filename):
+    with open(filename) as f:
+        return ['<bos> ' + line.strip() + ' <eos>' for line in f]
+
+
+def _build_vocab_from_sentences(sentences, min_count=5):
+    all_words = [word for sentence in sentences for word in sentence.split()]
+    counter = collections.Counter(all_words)
+    count_pairs = sorted(
+        [item for item in counter.items() if item[1] >= min_count],
+        key=lambda x: (-x[1], x[0])
+    )
+    words = ['<unk>'] + [count_pair[0] for count_pair in count_pairs]
+    word_to_id = dict(zip(words, range(len(words))))
+    return words, word_to_id
+
+
+def _convert_sentences_to_ids(sentences, word_to_id):
+    converted_sentences = [
+        [
+            word_to_id[word] if word in word_to_id else 0
+            for word in sentence.split()
+        ]
+        for sentence in sentences
+    ]
+    return converted_sentences
+
+
+def _convert_to_numpy_by_length(lang1_sentences, lang2_sentences):
+    length_dict = {}
+    for i, sentence in enumerate(lang1_sentences):
+        sentence_length_lang1 = len(sentence)
+        sentence_length_lang2 = len(lang2_sentences[i])
+        if sentence_length_lang1 not in length_dict:
+            length_dict[sentence_length_lang1] = [[], 0]
+        length_dict[sentence_length_lang1][0].append(i)
+        if sentence_length_lang2 > length_dict[sentence_length_lang1][1]:
+            length_dict[sentence_length_lang1][1] = sentence_length_lang2
+
+    input_arrays, output_arrays = [], []
+    for input_len, (sentence_ids, max_output_len) in length_dict.items():
+        input_arrays.append(np.array([
+            lang1_sentences[i] for i in sentence_ids
+        ], dtype=np.int32))
+        output_arrays.append(
+            np.zeros((len(sentence_ids), max_output_len), dtype=np.int32)
+        )
+        for output_array, sentence_id in zip(output_arrays[-1], sentence_ids):
+            actual_output_len = len(lang2_sentences[sentence_id])
+            output_array[:actual_output_len] = lang2_sentences[sentence_id]
+
+    return input_arrays, output_arrays
+
+
+def _convert_to_numpy(sentences):
+    max_len = np.max([len(s) for s in sentences])
+    output_arrays = np.zeros(
+        (len(sentences), max_len), dtype=np.int32
+    )
+    for s, output_array in zip(sentences, output_arrays):
+        sentence_length = len(s)
+        output_array[:sentence_length] = s
+    return output_arrays
+
+
+def europarl_raw_data(
+    data_path='bigdata/training',
+    lang1='de-en-english.txt',
+    lang2='de-en-german.txt',
+    train_size=1600000,
+    val_size=150000,
+):
+    """Load raw data from data directory "data_path".
+
+    The dataset is from http://www.statmt.org/wmt16/translation-task.html.
+    """
+    lang1_path = os.path.join(data_path, lang1)
+    lang2_path = os.path.join(data_path, lang2)
+
+    split_data = _train_val_test_split(
+        [_read_lines(lang1_path), _read_lines(lang2_path)],
+        train_size, val_size
+    )
+    lang1_train, lang1_val, lang1_test = split_data[0]
+    lang2_train, lang2_val, lang2_test = split_data[1]
+    lang1_idx2word, lang1_word2idx = _build_vocab_from_sentences(lang1_train)
+    lang2_idx2word, lang2_word2idx = _build_vocab_from_sentences(lang2_train)
+    lang1_train_vectorized = _convert_sentences_to_ids(
+        lang1_train,
+        lang1_word2idx
+    )
+    lang1_val_vectorized = _convert_sentences_to_ids(
+        lang1_val,
+        lang1_word2idx
+    )
+    lang1_test_vectorized = _convert_sentences_to_ids(
+        lang1_test,
+        lang1_word2idx
+    )
+    lang2_train_vectorized = _convert_sentences_to_ids(
+        lang2_train,
+        lang2_word2idx
+    )
+    X_train, y_train = _convert_to_numpy_by_length(
+        lang1_train_vectorized,
+        lang2_train_vectorized
+    )
+    X_val = _convert_to_numpy(lang1_val_vectorized)
+    X_test = _convert_to_numpy(lang1_test_vectorized)
+    return {
+        'vocab': {
+            'lang1_idx2word': lang1_idx2word,
+            'lang1_word2idx': lang1_word2idx,
+            'lang2_idx2word': lang2_idx2word,
+            'lang2_word2idx': lang2_word2idx,
+        },
+        'train': {
+            'X': X_train,
+            'y': y_train,
+        },
+        'val': {
+            'X': X_val,
+            'y': lang2_val,
+        },
+        'test': {
+            'X': X_test,
+            'y': lang2_test,
+        },
+    }
 
 
 def ptb_producer(raw_data, batch_size, num_steps, name=None):
