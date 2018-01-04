@@ -13,60 +13,78 @@ def make_rnn_variables(
     with tf.variable_scope(
         'RNNParams',
         reuse=False,
-        initializer=tf.random_uniform_initializer(
+        initializer=tf.orthogonal_initializer(
             -initializer_scale, initializer_scale
         ),
     ):
         embedding_matrix = tf.get_variable(
             'embedding',
             [vocab_size, embedding_size],
-            dtype=tf.float16,
+            dtype=tf.float32,
         )
         gru_params = {
             'U_z': tf.get_variable(
                 'U_z',
                 [hidden_size, hidden_size],
-                dtype=tf.float16,
+                initializer=tf.orthogonal_initializer(
+                    gain=initializer_scale,
+                ),
+                dtype=tf.float32,
             ),
             'W_z': tf.get_variable(
                 'W_z',
                 [embedding_size, hidden_size],
-                dtype=tf.float16,
+                initializer=tf.orthogonal_initializer(
+                    gain=initializer_scale,
+                ),
+                dtype=tf.float32,
             ),
             'b_z': tf.get_variable(
                 'b_z',
                 [hidden_size],
-                dtype=tf.float16,
+                dtype=tf.float32,
             ),
             'U_r': tf.get_variable(
                 'U_r',
                 [hidden_size, hidden_size],
-                dtype=tf.float16,
+                initializer=tf.orthogonal_initializer(
+                    gain=initializer_scale,
+                ),
+                dtype=tf.float32,
             ),
             'W_r': tf.get_variable(
                 'W_r',
                 [embedding_size, hidden_size],
-                dtype=tf.float16,
+                initializer=tf.orthogonal_initializer(
+                    gain=initializer_scale,
+                ),
+                dtype=tf.float32,
             ),
             'b_r': tf.get_variable(
                 'b_r',
                 [hidden_size],
-                dtype=tf.float16,
+                dtype=tf.float32,
             ),
             'U_h': tf.get_variable(
                 'U_h',
                 [hidden_size, hidden_size],
-                dtype=tf.float16,
+                initializer=tf.orthogonal_initializer(
+                    gain=initializer_scale,
+                ),
+                dtype=tf.float32,
             ),
             'W_h': tf.get_variable(
                 'W_h',
                 [embedding_size, hidden_size],
-                dtype=tf.float16,
+                initializer=tf.orthogonal_initializer(
+                    gain=initializer_scale,
+                ),
+                dtype=tf.float32,
             ),
             'b_h': tf.get_variable(
                 'b_h',
                 [hidden_size],
-                dtype=tf.float16,
+                dtype=tf.float32,
             ),
         }
         if reuse_embeddings_for_softmax:
@@ -74,12 +92,12 @@ def make_rnn_variables(
                 'W': tf.get_variable(
                     'softmax_w',
                     [hidden_size, embedding_size],
-                    dtype=tf.float16,
+                    dtype=tf.float32,
                 ),
                 'b': tf.get_variable(
                     'softmax_b',
                     [embedding_size],
-                    dtype=tf.float16,
+                    dtype=tf.float32,
                 )
             }
         else:
@@ -87,12 +105,12 @@ def make_rnn_variables(
                 'W': tf.get_variable(
                     'softmax_w',
                     [hidden_size, vocab_size],
-                    dtype=tf.float16,
+                    dtype=tf.float32,
                 ),
                 'b': tf.get_variable(
                     'softmax_b',
                     [vocab_size],
-                    dtype=tf.float16,
+                    dtype=tf.float32,
                 )
             }
 
@@ -153,7 +171,7 @@ def make_rnn_outputs(
         h_start = tf.zeros(
             [batch_size, hidden_size],
             name='h_start',
-            dtype=tf.float16,
+            dtype=tf.float32,
         )
         h_prev = h_start
         h_states = []
@@ -286,12 +304,12 @@ def make_placeholders(batch_size, num_steps):
             name='targets',
         )
         learning_rate = tf.placeholder(
-            dtype=tf.float16,
+            dtype=tf.float32,
             shape=[],
             name='learning_rate',
         )
         max_norm = tf.placeholder(
-            dtype=tf.float16,
+            dtype=tf.float32,
             shape=[],
             name='max_norm',
         )
@@ -312,7 +330,7 @@ def make_summary_nodes(targets, logits):
             targets=targets,
             weights=tf.ones_like(
                 targets,
-                dtype=tf.float16
+                dtype=tf.float32
             ),
             average_across_timesteps=True,
             average_across_batch=True,
