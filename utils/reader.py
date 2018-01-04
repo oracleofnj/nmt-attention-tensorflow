@@ -149,6 +149,17 @@ def _convert_to_numpy_by_length(lang1_sentences, lang2_sentences):
     return input_arrays, output_arrays
 
 
+def _convert_to_numpy(sentences):
+    max_len = np.max([len(s) for s in sentences])
+    output_arrays = np.zeros(
+        (len(sentences), max_len), dtype=np.int32
+    )
+    for s, output_array in zip(sentences, output_arrays):
+        sentence_length = len(s)
+        output_array[:sentence_length] = s
+    return output_arrays
+
+
 def europarl_raw_data(
     data_path='bigdata/training',
     lang1='de-en-english.txt',
@@ -169,6 +180,50 @@ def europarl_raw_data(
     )
     lang1_train, lang1_val, lang1_test = split_data[0]
     lang2_train, lang2_val, lang2_test = split_data[1]
+    lang1_idx2word, lang1_word2idx = _build_vocab_from_sentences(lang1_train)
+    lang2_idx2word, lang2_word2idx = _build_vocab_from_sentences(lang2_train)
+    lang1_train_vectorized = _convert_sentences_to_ids(
+        lang1_train,
+        lang1_word2idx
+    )
+    lang1_val_vectorized = _convert_sentences_to_ids(
+        lang1_val,
+        lang1_word2idx
+    )
+    lang1_test_vectorized = _convert_sentences_to_ids(
+        lang1_test,
+        lang1_word2idx
+    )
+    lang2_train_vectorized = _convert_sentences_to_ids(
+        lang2_train,
+        lang2_word2idx
+    )
+    X_train, y_train = _convert_to_numpy_by_length(
+        lang1_train_vectorized,
+        lang2_train_vectorized
+    )
+    X_val = _convert_to_numpy(lang1_val_vectorized)
+    X_test = _convert_to_numpy(lang1_test_vectorized)
+    return {
+        'vocab': {
+            'lang1_idx2word': lang1_idx2word,
+            'lang1_word2idx': lang1_word2idx,
+            'lang2_idx2word': lang2_idx2word,
+            'lang2_word2idx': lang2_word2idx,
+        },
+        'train': {
+            'X': X_train,
+            'y': y_train,
+        },
+        'val': {
+            'X': X_val,
+            'y': lang2_val,
+        },
+        'test': {
+            'X': X_test,
+            'y': lang2_test,
+        },
+    }
 
 
 def ptb_producer(raw_data, batch_size, num_steps, name=None):
