@@ -37,6 +37,7 @@ def make_rnn_variables(
             'b_z': tf.get_variable(
                 'b_z',
                 [hidden_size],
+                initializer=tf.zeros_initializer(),
                 dtype=tf.float32,
             ),
             'U_r': tf.get_variable(
@@ -52,6 +53,7 @@ def make_rnn_variables(
             'b_r': tf.get_variable(
                 'b_r',
                 [hidden_size],
+                initializer=tf.zeros_initializer(),
                 dtype=tf.float32,
             ),
             'U_h': tf.get_variable(
@@ -67,6 +69,7 @@ def make_rnn_variables(
             'b_h': tf.get_variable(
                 'b_h',
                 [hidden_size],
+                initializer=tf.zeros_initializer(),
                 dtype=tf.float32,
             ),
         }
@@ -80,6 +83,7 @@ def make_rnn_variables(
                 'b': tf.get_variable(
                     'softmax_b',
                     [embedding_size],
+                    initializer=tf.zeros_initializer(),
                     dtype=tf.float32,
                 )
             }
@@ -93,6 +97,7 @@ def make_rnn_variables(
                 'b': tf.get_variable(
                     'softmax_b',
                     [vocab_size],
+                    initializer=tf.zeros_initializer(),
                     dtype=tf.float32,
                 )
             }
