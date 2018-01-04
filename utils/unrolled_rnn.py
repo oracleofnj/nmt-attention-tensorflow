@@ -13,8 +13,8 @@ def make_rnn_variables(
     with tf.variable_scope(
         'RNNParams',
         reuse=False,
-        initializer=tf.orthogonal_initializer(
-            gain=initializer_scale
+        initializer=tf.random_uniform_initializer(
+            -initializer_scale, initializer_scale
         ),
     ):
         embedding_matrix = tf.get_variable(
