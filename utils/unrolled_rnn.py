@@ -13,7 +13,7 @@ def make_rnn_variables(
     with tf.variable_scope(
         'RNNParams',
         reuse=False,
-        initializer=tf.uniform_initializer(
+        initializer=tf.random_uniform(
             -initializer_scale, initializer_scale
         ),
     ):
