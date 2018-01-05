@@ -123,11 +123,18 @@ def _convert_sentences_to_ids(sentences, word_to_id):
     return converted_sentences
 
 
-def _convert_to_numpy_by_length(lang1_sentences, lang2_sentences):
+def _convert_to_numpy_by_length(
+    lang1_sentences,
+    lang2_sentences,
+    max_train_len,
+):
     length_dict = {}
     for i, sentence in enumerate(lang1_sentences):
         sentence_length_lang1 = len(sentence)
         sentence_length_lang2 = len(lang2_sentences[i])
+        if sentence_length_lang1 > max_train_len or \
+           sentence_length_lang2 > max_train_len:
+            continue
         if sentence_length_lang1 not in length_dict:
             length_dict[sentence_length_lang1] = [[], 0]
         length_dict[sentence_length_lang1][0].append(i)
@@ -164,8 +171,9 @@ def europarl_raw_data(
     data_path='bigdata/training',
     lang1='de-en-english.txt',
     lang2='de-en-german.txt',
+    max_train_len=32,
     train_size=1600000,
-    val_size=150000,
+    val_size=160000,
 ):
     """Load raw data from data directory "data_path".
 
@@ -200,7 +208,8 @@ def europarl_raw_data(
     )
     X_train, y_train = _convert_to_numpy_by_length(
         lang1_train_vectorized,
-        lang2_train_vectorized
+        lang2_train_vectorized,
+        max_train_len,
     )
     X_val = _convert_to_numpy(lang1_val_vectorized)
     X_test = _convert_to_numpy(lang1_test_vectorized)
