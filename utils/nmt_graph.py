@@ -190,3 +190,38 @@ class NMTModel(object):
                     dtype=tf.float32,
                 )
             }
+
+    def make_training_graph(
+        self,
+        batch_size,
+        source_length,
+        target_length,
+    ):
+        """Make all the placeholders, outputs, and training ops."""
+        with tf.name_scope('placeholders_len{0}'.format(source_length)):
+            inputs = tf.placeholder(
+                dtype=tf.int32,
+                shape=[batch_size, source_length],
+                name='inputs',
+            )
+            targets = tf.placeholder(
+                dtype=tf.int32,
+                shape=[batch_size, target_length],
+                name='targets',
+            )
+            learning_rate = tf.placeholder(
+                dtype=tf.float32,
+                shape=[],
+                name='learning_rate',
+            )
+            max_norm = tf.placeholder(
+                dtype=tf.float32,
+                shape=[],
+                name='max_norm',
+            )
+
+        with tf.name_scope('encoder_len{0}'.format(source_length)):
+            pass
+
+        with tf.name_scope('decoder_len{0}'.format(source_length)):
+            pass
