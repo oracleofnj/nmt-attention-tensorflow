@@ -318,11 +318,15 @@ class NMTModel(object):
             )
 
         with tf.name_scope('summary_len{0}'.format(source_length)):
+            targets_without_start_token = tf.identity(
+                targets[:, 1:],
+                name='targets_without_start_token'
+            )
             batch_loss = tf.contrib.seq2seq.sequence_loss(
                 logits=logits,
-                targets=targets[:, 1:],
+                targets=targets_without_start_token,
                 weights=tf.ones_like(
-                    targets[:, 1:],
+                    targets_without_start_token,
                     dtype=tf.float32
                 ),
                 average_across_timesteps=True,
@@ -342,7 +346,10 @@ class NMTModel(object):
                 name='predictions',
             )
             num_correct_predictions = tf.reduce_sum(
-                tf.cast(tf.equal(predictions, targets), tf.int32),
+                tf.cast(tf.equal(
+                    predictions,
+                    targets_without_start_token
+                ), tf.int32),
                 name='num_correct_predictions',
             )
 
@@ -379,3 +386,35 @@ class NMTModel(object):
                 'gradient_global_norm': gradient_global_norm,
             }
         }
+
+    def make_all_graphs(
+        self,
+        batch_size,
+        X_all,
+        y_all,
+    ):
+        """Make all the training graphs given the training inputs."""
+        graphs_and_data = []
+        sorted_batches = sorted(
+            zip(X_all, y_all),
+            key=lambda t: t[0].shape[1]
+        )
+        for x, y in sorted_batches:
+            if x.shape[1] <= 2:
+                continue
+            graphs_and_data.append({
+                'source_length': x.shape[1] - 2,
+                'target_length': y.shape[1],
+                'X': x,
+                'y': y,
+                'inputs_and_outputs': self.make_training_graph(
+                    batch_size,
+                    x.shape[1] - 2,
+                    y.shape[1],
+                )
+            })
+        return graphs_and_data
+
+
+def generate_training_epoch(X, y, batch_size):
+    pass
