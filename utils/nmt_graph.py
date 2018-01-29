@@ -415,6 +415,129 @@ class NMTModel(object):
             })
         return graphs_and_data
 
+    def make_eval_graph(
+        self,
+        batch_size,
+        source_length,
+        target_length,
+        bos_token_id,
+    ):
+        """Make all the placeholders and outputs."""
+        with tf.name_scope('eval_placeholders_len{0}'.format(source_length)):
+            inputs = tf.placeholder(
+                dtype=tf.int32,
+                shape=[batch_size, source_length],
+                name='inputs',
+            )
+            bos_tokens = tf.constant(
+                [bos_token_id] * batch_size,
+                dtype=tf.int32,
+                shape=[batch_size],
+                name='bos_tokens'
+            )
+
+        with tf.name_scope('eval_encoder_len{0}'.format(source_length)):
+            embedded_encoder_inputs = tf.nn.embedding_lookup(
+                self.source_embedding_matrix,
+                inputs,
+                name='embedded_encoder_inputs',
+            )
+            h_start_encoder = tf.zeros(
+                [batch_size, self.hidden_size],
+                name='h_start_encoder',
+                dtype=tf.float32,
+            )
+            h_prev_encoder = h_start_encoder
+            h_states_encoder = []
+            for i in range(source_length):
+                h_states_encoder.append(gru_update(
+                    embedded_encoder_inputs[:, i, :],
+                    h_prev_encoder,
+                    self.source_gru_params,
+                    i
+                ))
+                h_prev_encoder = h_states_encoder[-1]
+
+            # concatenated_states will have shape
+            # (batch_size, num_steps * hidden_size)
+            concatenated_states_encoder = tf.concat(
+                h_states_encoder,
+                axis=1,
+                name='concatenated_states_encoder'
+            )
+            # reshaped_states (which will get used for attention)
+            # will have have shape (batch_size, num_steps, hidden_size)
+            reshaped_states_encoder = tf.reshape(
+                concatenated_states_encoder,
+                [batch_size, source_length, self.hidden_size],
+                name='reshaped_states_encoder',
+            )
+            # final_states will have shape
+            # (batch_size, hidden_size)
+            final_states = h_states_encoder[-1]
+
+        with tf.name_scope('eval_decoder_len{0}'.format(source_length)):
+            # embedded_decoder_inputs = tf.nn.embedding_lookup(
+            #     self.target_embedding_matrix,
+            #     targets,
+            #     name='embedded_decoder_inputs',
+            # )
+            transposed_target_embeddings = tf.transpose(
+                self.target_embedding_matrix,
+                [1, 0],
+                'transposed_target_embeddings',
+            )
+            h_prev_decoder = final_states
+            prev_outputs = bos_tokens
+            output_tokens = []
+            for i in range(target_length):
+                embedded_decoder_inputs = tf.nn.embedding_lookup(
+                    self.target_embedding_matrix,
+                    prev_outputs,
+                    name='embedded_decoder_inputs{0}'.format(i),
+                )
+                h_states = gru_update(
+                    embedded_decoder_inputs,
+                    h_prev_decoder,
+                    self.target_gru_params,
+                    i
+                )
+                antiembeddings = tf.nn.xw_plus_b(
+                    h_states,
+                    self.softmax_params['W'],
+                    self.softmax_params['b'],
+                    name='antiembeddings{0}'.format(i),
+                )
+                logits = tf.matmul(
+                    antiembeddings,
+                    transposed_target_embeddings,
+                    name='logits{0}'.format(i),
+                )
+                output_tokens.append(
+                    tf.argmax(
+                        logits,
+                        axis=1,
+                        name='output{0}'.format(i),
+                    )
+                )
+
+                h_prev_decoder = h_states
+                prev_outputs = output_tokens[-1]
+            outputs = tf.stack(
+                output_tokens,
+                axis=1,
+                name='eval_outputs'
+            )
+
+        return {
+            'placeholders': {
+                'inputs': inputs,
+            },
+            'outputs': {
+                'outputs': outputs,
+            },
+        }
+
 
 def generate_training_epoch(X, y, batch_size):
     pass

@@ -107,7 +107,7 @@ def _build_vocab_from_sentences(sentences, min_count=5):
         [item for item in counter.items() if item[1] >= min_count],
         key=lambda x: (-x[1], x[0])
     )
-    words = ['<unk>'] + [count_pair[0] for count_pair in count_pairs]
+    words = ['<unk>', '<pad>'] + [count_pair[0] for count_pair in count_pairs]
     word_to_id = dict(zip(words, range(len(words))))
     return words, word_to_id
 
@@ -127,13 +127,19 @@ def _convert_to_numpy_by_length(
     lang1_sentences,
     lang2_sentences,
     max_train_len,
+    min_train_len=3,
+    pad_to_multiple_of=8,
 ):
     length_dict = {}
     for i, sentence in enumerate(lang1_sentences):
-        sentence_length_lang1 = len(sentence)
+        sentence_length_lang1 = pad_to_multiple_of * (
+            1 + ((len(sentence) - 1) // pad_to_multiple_of)
+        )
         sentence_length_lang2 = len(lang2_sentences[i])
         if sentence_length_lang1 > max_train_len or \
-           sentence_length_lang2 > max_train_len:
+           sentence_length_lang1 < min_train_len or \
+           sentence_length_lang2 > max_train_len or \
+           sentence_length_lang2 < min_train_len:
             continue
         if sentence_length_lang1 not in length_dict:
             length_dict[sentence_length_lang1] = [[], 0]
@@ -143,11 +149,14 @@ def _convert_to_numpy_by_length(
 
     input_arrays, output_arrays = [], []
     for input_len, (sentence_ids, max_output_len) in length_dict.items():
-        input_arrays.append(np.array([
-            lang1_sentences[i] for i in sentence_ids
-        ], dtype=np.int32))
+        input_arrays.append(
+            np.ones((len(sentence_ids), input_len), dtype=np.int32)
+        )
+        for input_array, sentence_id in zip(input_arrays[-1], sentence_ids):
+            actual_input_len = len(lang1_sentences[sentence_id])
+            input_array[:actual_input_len] = lang1_sentences[sentence_id]
         output_arrays.append(
-            np.zeros((len(sentence_ids), max_output_len), dtype=np.int32)
+            np.ones((len(sentence_ids), max_output_len), dtype=np.int32)
         )
         for output_array, sentence_id in zip(output_arrays[-1], sentence_ids):
             actual_output_len = len(lang2_sentences[sentence_id])
@@ -169,8 +178,8 @@ def _convert_to_numpy(sentences):
 
 def europarl_raw_data(
     data_path='bigdata/training',
-    lang1='de-en-english.txt',
-    lang2='de-en-german.txt',
+    lang1='de-en-german.txt',
+    lang2='de-en-english.txt',
     max_train_len=32,
     train_size=1600000,
     val_size=160000,
