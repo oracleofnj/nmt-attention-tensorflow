@@ -167,7 +167,7 @@ def _convert_to_numpy_by_length(
 
 def _convert_to_numpy(sentences):
     max_len = np.max([len(s) for s in sentences])
-    output_arrays = np.zeros(
+    output_arrays = np.ones(
         (len(sentences), max_len), dtype=np.int32
     )
     for s, output_array in zip(sentences, output_arrays):
