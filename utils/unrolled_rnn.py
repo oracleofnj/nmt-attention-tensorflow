@@ -145,7 +145,7 @@ def gru_update(x_t, h_t_minus_1, gru_params, timestep=None):
                 '_{0}'.format(timestep) if timestep is not None else ''
             ),
         )
-        h_t = z_t * h_t_minus_1 + (1 - z_t) * h_tilde_t
+        h_t = (1 - z_t) * h_t_minus_1 + z_t * h_tilde_t
     return h_t
 
 

@@ -3,7 +3,7 @@ import tensorflow as tf
 from .unrolled_rnn import gru_update
 
 
-class NMTModel(object):
+class AttentionModel(object):
     """Holds the variables and produces the graphs."""
 
     def __init__(
@@ -129,6 +129,14 @@ class NMTModel(object):
                     ),
                     dtype=tf.float32,
                 ),
+                'C_z': tf.get_variable(
+                    'C_z_target',
+                    [hidden_size, hidden_size],
+                    initializer=tf.orthogonal_initializer(
+                        gain=initializer_scale,
+                    ),
+                    dtype=tf.float32,
+                ),
                 'b_z': tf.get_variable(
                     'b_z_target',
                     [hidden_size],
@@ -145,6 +153,14 @@ class NMTModel(object):
                 'W_r': tf.get_variable(
                     'W_r_target',
                     [embedding_size, hidden_size],
+                    initializer=tf.orthogonal_initializer(
+                        gain=initializer_scale,
+                    ),
+                    dtype=tf.float32,
+                ),
+                'C_r': tf.get_variable(
+                    'C_r_target',
+                    [hidden_size, hidden_size],
                     initializer=tf.orthogonal_initializer(
                         gain=initializer_scale,
                     ),
@@ -171,6 +187,14 @@ class NMTModel(object):
                     ),
                     dtype=tf.float32,
                 ),
+                'C_h': tf.get_variable(
+                    'C_h_target',
+                    [hidden_size, hidden_size],
+                    initializer=tf.orthogonal_initializer(
+                        gain=initializer_scale,
+                    ),
+                    dtype=tf.float32,
+                ),
                 'b_h': tf.get_variable(
                     'b_h_target',
                     [hidden_size],
@@ -189,6 +213,66 @@ class NMTModel(object):
                     dtype=tf.float32,
                 )
             }
+            self.attention_params = {
+                'W': tf.get_variable(
+                    'attention_w',
+                    [hidden_size, hidden_size],
+                    dtype=tf.float32,
+                )
+            }
+
+    def _attn_gru_update(
+        self,
+        x_t,
+        c_t,
+        h_t_minus_1,
+        timestep=None
+    ):
+        U_z, W_z, C_z, b_z = \
+            self.target_gru_params['U_z'], \
+            self.target_gru_params['W_z'], \
+            self.target_gru_params['C_z'], \
+            self.target_gru_params['b_z']
+        U_r, W_r, C_r, b_r = \
+            self.target_gru_params['U_r'], \
+            self.target_gru_params['W_r'], \
+            self.target_gru_params['C_r'], \
+            self.target_gru_params['b_r']
+        U_h, W_h, C_h, b_h = \
+            self.target_gru_params['U_h'], \
+            self.target_gru_params['W_h'], \
+            self.target_gru_params['C_h'], \
+            self.target_gru_params['b_h']
+        with tf.name_scope('gru_calculations'):
+            r_t = tf.sigmoid(
+                tf.matmul(x_t, W_r) +
+                tf.matmul(h_t_minus_1, U_r) +
+                tf.matmul(c_t, C_r) +
+                b_r,
+                name='r' + (
+                    '_{0}'.format(timestep) if timestep is not None else ''
+                ),
+            )
+            z_t = tf.sigmoid(
+                tf.matmul(x_t, W_z) +
+                tf.matmul(h_t_minus_1, U_z) +
+                tf.matmul(c_t, C_z) +
+                b_z,
+                name='z' + (
+                    '_{0}'.format(timestep) if timestep is not None else ''
+                ),
+            )
+            h_tilde_t = tf.tanh(
+                tf.matmul(x_t, W_h) +
+                tf.matmul(h_t_minus_1 * r_t, U_h) +
+                tf.matmul(c_t, C_h) +
+                b_h,
+                name='h_tilde' + (
+                    '_{0}'.format(timestep) if timestep is not None else ''
+                ),
+            )
+            h_t = (1 - z_t) * h_t_minus_1 + z_t * h_tilde_t
+        return h_t
 
     def make_training_graph(
         self,
@@ -248,12 +332,20 @@ class NMTModel(object):
                 axis=1,
                 name='concatenated_states_encoder'
             )
-            # reshaped_states (which will get used for attention)
-            # will have have shape (batch_size, num_steps, hidden_size)
+            # reshaped_states will have have shape
+            # (batch_size, num_steps, hidden_size)
             reshaped_states_encoder = tf.reshape(
                 concatenated_states_encoder,
                 [batch_size, source_length, self.hidden_size],
                 name='reshaped_states_encoder',
+            )
+            # attended_states will have shape
+            # (batch_size, num_steps, hidden_size)
+            attended_states = tf.einsum(
+                'ij,fgj->fgi',
+                self.attention_params['W'],
+                reshaped_states_encoder,
+                name='attended_states',
             )
             # final_states will have shape
             # (batch_size, hidden_size)
@@ -266,12 +358,36 @@ class NMTModel(object):
                 name='embedded_decoder_inputs',
             )
             h_prev_decoder = final_states
+            attention_weights = []
             h_states_decoder = []
             for i in range(target_length - 1):
-                h_states_decoder.append(gru_update(
-                    embedded_decoder_inputs[:, i, :],
+                # attention_weights_unnormalized will have shape
+                # (batch_size, source_length)
+                attention_weights_unnormalized = tf.einsum(
+                    'ik,ijk->ij',
                     h_prev_decoder,
-                    self.target_gru_params,
+                    attended_states,
+                    name='attention_weights_unnormalized{0}'.format(i)
+                )
+                # attention_weights_normalized will have shape
+                # (batch_size, source_length)
+                attention_weights_normalized = tf.nn.softmax(
+                    attention_weights_unnormalized,
+                    name='attention_weights_normalized{0}'.format(i)
+                )
+                attention_weights.append(attention_weights_normalized)
+                # context_vector will have shape
+                # (batch_size, hidden_size)
+                context_vector = tf.einsum(
+                    'ij,ijk->ik',
+                    attention_weights_normalized,
+                    reshaped_states_encoder,
+                    name='context_vector{0}'.format(i)
+                )
+                h_states_decoder.append(self._attn_gru_update(
+                    embedded_decoder_inputs[:, i, :],
+                    context_vector,
+                    h_prev_decoder,
                     i
                 ))
                 h_prev_decoder = h_states_decoder[-1]
@@ -314,6 +430,20 @@ class NMTModel(object):
                 long_and_skinny_logits,
                 [batch_size, (target_length - 1), self.target_vocab_size],
                 name='logits'
+            )
+            # concatenated_attention_weights will have shape
+            # (batch_size, (target_length - 1) * source_length)
+            concatenated_attention_weights = tf.concat(
+                attention_weights,
+                axis=1,
+                name='concatenated_attention_weights'
+            )
+            # reshaped_attention_weights will have have shape
+            # (batch_size, (target_length - 1) * source_length)
+            reshaped_attention_weights = tf.reshape(
+                concatenated_attention_weights,
+                [batch_size, target_length - 1, source_length],
+                name='attention_weights',
             )
 
         with tf.name_scope('summary_len{0}'.format(source_length)):
