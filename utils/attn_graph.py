@@ -341,10 +341,12 @@ class AttentionModel(object):
             )
             # attended_states will have shape
             # (batch_size, num_steps, hidden_size)
-            attended_states = tf.einsum(
-                'ij,fgj->fgi',
-                self.attention_params['W'],
-                reshaped_states_encoder,
+            attended_states = tf.identity(
+                tf.einsum(
+                    'ij,fgj->fgi',
+                    self.attention_params['W'],
+                    reshaped_states_encoder,
+                ),
                 name='attended_states',
             )
             # final_states will have shape
@@ -363,10 +365,12 @@ class AttentionModel(object):
             for i in range(target_length - 1):
                 # attention_weights_unnormalized will have shape
                 # (batch_size, source_length)
-                attention_weights_unnormalized = tf.einsum(
-                    'ik,ijk->ij',
-                    h_prev_decoder,
-                    attended_states,
+                attention_weights_unnormalized = tf.identity(
+                    tf.einsum(
+                        'ik,ijk->ij',
+                        h_prev_decoder,
+                        attended_states,
+                    ),
                     name='attention_weights_unnormalized{0}'.format(i)
                 )
                 # attention_weights_normalized will have shape
@@ -378,10 +382,12 @@ class AttentionModel(object):
                 attention_weights.append(attention_weights_normalized)
                 # context_vector will have shape
                 # (batch_size, hidden_size)
-                context_vector = tf.einsum(
-                    'ij,ijk->ik',
-                    attention_weights_normalized,
-                    reshaped_states_encoder,
+                context_vector = tf.identity(
+                    tf.einsum(
+                        'ij,ijk->ik',
+                        attention_weights_normalized,
+                        reshaped_states_encoder,
+                    ),
                     name='context_vector{0}'.format(i)
                 )
                 h_states_decoder.append(self._attn_gru_update(
@@ -601,6 +607,16 @@ class AttentionModel(object):
                 [batch_size, source_length, self.hidden_size],
                 name='reshaped_states_encoder',
             )
+            # attended_states will have shape
+            # (batch_size, num_steps, hidden_size)
+            attended_states = tf.identity(
+                tf.einsum(
+                    'ij,fgj->fgi',
+                    self.attention_params['W'],
+                    reshaped_states_encoder,
+                ),
+                name='attended_states',
+            )
             # final_states will have shape
             # (batch_size, hidden_size)
             final_states = h_states_encoder[-1]
@@ -618,6 +634,7 @@ class AttentionModel(object):
             )
             h_prev_decoder = final_states
             prev_outputs = bos_tokens
+            attention_weights = []
             output_tokens = []
             for i in range(target_length):
                 embedded_decoder_inputs = tf.nn.embedding_lookup(
@@ -625,10 +642,37 @@ class AttentionModel(object):
                     prev_outputs,
                     name='embedded_decoder_inputs{0}'.format(i),
                 )
-                h_states = gru_update(
+                # attention_weights_unnormalized will have shape
+                # (batch_size, source_length)
+                attention_weights_unnormalized = tf.identity(
+                    tf.einsum(
+                        'ik,ijk->ij',
+                        h_prev_decoder,
+                        attended_states,
+                    ),
+                    name='attention_weights_unnormalized{0}'.format(i)
+                )
+                # attention_weights_normalized will have shape
+                # (batch_size, source_length)
+                attention_weights_normalized = tf.nn.softmax(
+                    attention_weights_unnormalized,
+                    name='attention_weights_normalized{0}'.format(i)
+                )
+                attention_weights.append(attention_weights_normalized)
+                # context_vector will have shape
+                # (batch_size, hidden_size)
+                context_vector = tf.identity(
+                    tf.einsum(
+                        'ij,ijk->ik',
+                        attention_weights_normalized,
+                        reshaped_states_encoder,
+                    ),
+                    name='context_vector{0}'.format(i)
+                )
+                h_states = self._attn_gru_update(
                     embedded_decoder_inputs,
+                    context_vector,
                     h_prev_decoder,
-                    self.target_gru_params,
                     i
                 )
                 antiembeddings = tf.nn.xw_plus_b(
@@ -652,6 +696,20 @@ class AttentionModel(object):
 
                 h_prev_decoder = h_states
                 prev_outputs = output_tokens[-1]
+            # concatenated_attention_weights will have shape
+            # (batch_size, (target_length - 1) * source_length)
+            concatenated_attention_weights = tf.concat(
+                attention_weights,
+                axis=1,
+                name='concatenated_attention_weights'
+            )
+            # reshaped_attention_weights will have have shape
+            # (batch_size, (target_length - 1) * source_length)
+            reshaped_attention_weights = tf.reshape(
+                concatenated_attention_weights,
+                [batch_size, target_length, source_length],
+                name='attention_weights',
+            )
             outputs = tf.stack(
                 output_tokens,
                 axis=1,
@@ -664,6 +722,7 @@ class AttentionModel(object):
             },
             'outputs': {
                 'outputs': outputs,
+                'attention_weights': reshaped_attention_weights,
             },
         }
 
