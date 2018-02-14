@@ -762,17 +762,22 @@ class AttentionModel(object):
                 prev_outputs = output_tokens[-1]
             # concatenated_attention_weights will have shape
             # (batch_size, (target_length - 1) * source_length)
-            concatenated_attention_weights = tf.concat(
-                attention_weights,
-                axis=1,
-                name='concatenated_attention_weights'
-            )
+            # concatenated_attention_weights = tf.concat(
+            #     attention_weights,
+            #     axis=1,
+            #     name='concatenated_attention_weights'
+            # )
             # reshaped_attention_weights will have have shape
             # (batch_size, (target_length - 1) * source_length)
-            reshaped_attention_weights = tf.reshape(
-                concatenated_attention_weights,
-                [batch_size, target_length, source_length],
-                name='attention_weights',
+            # reshaped_attention_weights = tf.reshape(
+            #     concatenated_attention_weights,
+            #     [batch_size, target_length, source_length],
+            #     name='attention_weights',
+            # )
+            stacked_attention_weights = tf.stack(
+                attention_weights,
+                axis=1,
+                name='attention_weights'
             )
             outputs = tf.stack(
                 output_tokens,
@@ -786,7 +791,8 @@ class AttentionModel(object):
             },
             'outputs': {
                 'outputs': outputs,
-                'attention_weights': reshaped_attention_weights,
+                'attention_weights': stacked_attention_weights,
+                'attention_weights_as_array': attention_weights,
             },
         }
 
@@ -794,9 +800,10 @@ class AttentionModel(object):
         self,
         sess,
         path,
+        global_step,
     ):
         """Save the variables."""
-        self.saver.save(sess, path)
+        self.saver.save(sess, path, global_step)
 
     def restore(
         self,
