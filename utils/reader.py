@@ -148,7 +148,8 @@ def _convert_to_numpy_by_length(
             length_dict[sentence_length_lang1][1] = sentence_length_lang2
 
     input_arrays, output_arrays = [], []
-    for input_len, (sentence_ids, max_output_len) in length_dict.items():
+    for input_len in sorted(length_dict.keys()):
+        sentence_ids, max_output_len = length_dict[input_len]
         input_arrays.append(
             np.ones((len(sentence_ids), input_len), dtype=np.int32)
         )

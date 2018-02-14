@@ -217,9 +217,51 @@ class AttentionModel(object):
                 'W': tf.get_variable(
                     'attention_w',
                     [hidden_size, hidden_size],
+                    initializer=tf.orthogonal_initializer(
+                        gain=1.0,
+                    ),
                     dtype=tf.float32,
                 )
             }
+        tf.summary.histogram(
+            'source_embedding',
+            self.source_embedding_matrix,
+            collections=['AttnVariables'],
+        )
+        tf.summary.histogram(
+            'target_embedding',
+            self.target_embedding_matrix,
+            collections=['AttnVariables'],
+        )
+        for k, v in self.source_gru_params.items():
+            tf.summary.histogram(
+                'source_gru_params/{0}'.format(k),
+                v,
+                collections=['AttnVariables'],
+            )
+        for k, v in self.target_gru_params.items():
+            tf.summary.histogram(
+                'target_gru_params/{0}'.format(k),
+                v,
+                collections=['AttnVariables'],
+            )
+        for k, v in self.softmax_params.items():
+            tf.summary.histogram(
+                'softmax_params/{0}'.format(k),
+                v,
+                collections=['AttnVariables'],
+            )
+        for k, v in self.attention_params.items():
+            tf.summary.histogram(
+                'attention_params/{0}'.format(k),
+                v,
+                collections=['AttnVariables'],
+            )
+
+        self.merged_variable_summaries = tf.summary.merge_all(
+            key='AttnVariables'
+        )
+        self.saver = tf.train.Saver()
 
     def _attn_gru_update(
         self,
@@ -352,6 +394,11 @@ class AttentionModel(object):
             # final_states will have shape
             # (batch_size, hidden_size)
             final_states = h_states_encoder[-1]
+            tf.summary.histogram(
+                'concatenated_states_encoder',
+                concatenated_states_encoder,
+                collections=['summaries_len{0}'.format(source_length)],
+            )
 
         with tf.name_scope('decoder_len{0}'.format(source_length)):
             embedded_decoder_inputs = tf.nn.embedding_lookup(
@@ -444,12 +491,15 @@ class AttentionModel(object):
                 axis=1,
                 name='concatenated_attention_weights'
             )
-            # reshaped_attention_weights will have have shape
-            # (batch_size, (target_length - 1) * source_length)
-            reshaped_attention_weights = tf.reshape(
+            tf.summary.histogram(
+                'concatenated_states_decoder',
+                concatenated_states_encoder,
+                collections=['summaries_len{0}'.format(source_length)],
+            )
+            tf.summary.histogram(
+                'concatenated_attention_weights',
                 concatenated_attention_weights,
-                [batch_size, target_length - 1, source_length],
-                name='attention_weights',
+                collections=['summaries_len{0}'.format(source_length)],
             )
 
         with tf.name_scope('summary_len{0}'.format(source_length)):
@@ -487,6 +537,16 @@ class AttentionModel(object):
                 ), tf.int32),
                 name='num_correct_predictions',
             )
+            tf.summary.scalar(
+                'loss',
+                loss,
+                collections=['summaries_len{0}'.format(source_length)],
+            )
+            tf.summary.scalar(
+                'num_correct_predictions',
+                num_correct_predictions,
+                collections=['summaries_len{0}'.format(source_length)],
+            )
 
         with tf.name_scope('train_ops_len{0}'.format(source_length)):
             trainable_variables = tf.trainable_variables()
@@ -505,6 +565,10 @@ class AttentionModel(object):
                 zip(clipped_gradients, trainable_variables),
             )
 
+        merged_summaries = tf.summary.merge_all(
+            key='summaries_len{0}'.format(source_length)
+        )
+
         return {
             'placeholders': {
                 'inputs': inputs,
@@ -519,6 +583,10 @@ class AttentionModel(object):
             'train_ops': {
                 'train_op': train_op,
                 'gradient_global_norm': gradient_global_norm,
+                'summary': tf.summary.merge([
+                    self.merged_variable_summaries,
+                    merged_summaries,
+                ]),
             }
         }
 
@@ -530,11 +598,7 @@ class AttentionModel(object):
     ):
         """Make all the training graphs given the training inputs."""
         graphs_and_data = []
-        sorted_batches = sorted(
-            zip(X_all, y_all),
-            key=lambda t: t[0].shape[1]
-        )
-        for x, y in sorted_batches:
+        for x, y in zip(X_all, y_all):
             if x.shape[1] <= 2:
                 continue
             graphs_and_data.append({
@@ -726,6 +790,18 @@ class AttentionModel(object):
             },
         }
 
+    def save(
+        self,
+        sess,
+        path,
+    ):
+        """Save the variables."""
+        self.saver.save(sess, path)
 
-def generate_training_epoch(X, y, batch_size):
-    pass
+    def restore(
+        self,
+        sess,
+        path,
+    ):
+        """Restore the variables."""
+        self.saver.restore(sess, path)
